@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: titleshield
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev --force && npm run build
+    startCommand: PUBLIC_BASE_URL=$RENDER_EXTERNAL_URL WEB_BASE_URL=$RENDER_EXTERNAL_URL node --max-old-space-size=320 --import tsx apps/server/src/api.ts
+    healthCheckPath: /api/v1/meta
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: development
+      - key: DATABASE_URL
+        fromDatabase:
+          name: titleshield-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: TINYFISH_API_KEY
+        sync: false
+databases:
+  - name: titleshield-db
+    plan: free
+    databaseName: titleshield

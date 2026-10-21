@@ -1,0 +1,31 @@
+{
+  "name": "titleshield",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TitleShield (BhoomiTrust) — autonomous 30-year property title search, encumbrance scoring, signed Title Clearance Certificates and programmable escrow.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run db:migrate && concurrently -n api,web -c green,blue \"npm run dev -w apps/server\" \"npm run dev -w apps/web\"",
+    "dev:api": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "worker": "npm run worker -w apps/server",
+    "db:migrate": "npm run migrate -w apps/server",
+    "pki": "npm run pki -w apps/server",
+    "build": "npm run build -w apps/web",
+    "start": "npm run start -w apps/server",
+    "contracts": "npm run contracts -w apps/server",
+    "test": "npm run test -w packages/core && npm run test -w apps/server",
+    "typecheck": "tsc -p packages/core && tsc -p apps/server && tsc -p apps/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}
