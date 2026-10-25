@@ -1,0 +1,34 @@
+# One-click hosting on Render (render.com → New → Blueprint → pick this repo).
+# Creates a free Postgres database and one web service that serves the API, the website
+# and the built-in blockchain. Free instances sleep after 15 minutes idle; the first visit
+# after that takes about a minute to wake up.
+services:
+  - type: web
+    name: titleshield
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev --force && npm run build
+    startCommand: PUBLIC_BASE_URL=$RENDER_EXTERNAL_URL WEB_BASE_URL=$RENDER_EXTERNAL_URL node --max-old-space-size=320 --import tsx apps/server/src/api.ts
+    healthCheckPath: /api/v1/meta
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: development   # keeps the demo accounts and sandbox OTPs visible
+      - key: DATABASE_URL
+        fromDatabase:
+          name: titleshield-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: TINYFISH_API_KEY
+        sync: false
+      - key: SETTINGS_LOCKED
+        value: "true"        # the public link can't change or remove the keys
+      # Optional public testnet (Sepolia) instead of the built-in local chain:
+      # CHAIN_MODE=rpc, CHAIN_RPC_URL, CHAIN_OPERATOR_KEY, CHAIN_ORACLE_KEY, CHAIN_EXPLORER_URL (add in the Render dashboard)
+
+databases:
+  - name: titleshield-db
+    plan: free
+    databaseName: titleshield

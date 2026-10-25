@@ -1,0 +1,94 @@
+# Full stack as the blueprint describes it:
+#   PostgreSQL 16 · Temporal (durable sagas) · MinIO with S3 Object Lock (WORM evidence)
+#   API + web app (with the local blockchain for the TitleEscrow contract) · Temporal worker
+# Run:  cp .env.example .env   (or add the free TinyFish key later on the Settings page)
+#       docker compose up --build        → http://localhost:8080   Temporal UI → http://localhost:8233
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: titleshield
+      POSTGRES_PASSWORD: titleshield
+      POSTGRES_DB: titleshield
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U titleshield"]
+      interval: 3s
+      retries: 20
+
+  temporal:
+    # Temporal CLI image running the single-binary dev server (frontend 7233, UI 8233).
+    # For production use a Temporal Cloud namespace or a self-hosted temporalio/server cluster.
+    image: temporalio/temporal:latest
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--ui-ip", "0.0.0.0"]
+    ports: ["7233:7233", "8233:8233"]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: titleshield
+      MINIO_ROOT_PASSWORD: titleshield-minio-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      retries: 20
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on: { minio: { condition: service_healthy } }
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 titleshield titleshield-minio-secret &&
+      mc mb --ignore-existing --with-lock local/titleshield-evidence &&
+      echo 'Object Lock bucket ready'"
+
+  api:
+    build: .
+    env_file: [.env]
+    environment: &app_env
+      # "development" keeps the demo accounts, sandbox OTPs and demo bank key visible.
+      # Use "production" (with FIELD_ENCRYPTION_KEY, JWT_SECRET and a real bank adapter) for real deployments.
+      NODE_ENV: development
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+      DATABASE_URL: postgres://titleshield:titleshield@postgres:5432/titleshield
+      WORKFLOW_ENGINE: temporal
+      TEMPORAL_ADDRESS: temporal:7233
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: "true"
+      S3_BUCKET: titleshield-evidence
+      AWS_ACCESS_KEY_ID: titleshield
+      AWS_SECRET_ACCESS_KEY: titleshield-minio-secret
+      PUBLIC_BASE_URL: http://api:8080
+      WEB_BASE_URL: http://localhost:8080
+      CHAIN_HOST: 0.0.0.0
+      PKI_DIR: /app/data/pki
+      CHAIN_DIR: /app/data/chain
+    ports: ["8080:8080", "8545:8545"]
+    volumes: [pki:/app/data/pki, chain:/app/data/chain]
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-setup: { condition: service_completed_successfully }
+      temporal: { condition: service_started }
+
+  worker:
+    build: .
+    command: ["npm", "run", "worker", "-w", "apps/server"]
+    env_file: [.env]
+    environment:
+      <<: *app_env
+      CHAIN_RPC_URL: http://api:8545   # the local blockchain runs inside the api container
+    volumes: [pki:/app/data/pki, chain:/app/data/chain]
+    depends_on:
+      api: { condition: service_started }
+
+volumes:
+  chain:
+  pgdata:
+  miniodata:
+  pki:
